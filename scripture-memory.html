@@ -1,0 +1,376 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Scripture Memory Grid</title>
+
+<style>
+:root { --cell: 44px; --gap: 6px; --border: #cfcfcf; }
+
+body {
+  font-family: system-ui, Arial, sans-serif;
+  margin: 0;
+  padding: 18px;
+}
+
+.wrap {
+  display: grid;
+  grid-template-columns: 150px 1fr;
+  gap: 16px;
+  align-items: start;
+}
+
+/* LETTER SIDEBAR */
+.letters {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+  position: sticky;
+  top: 12px;
+}
+.letters button {
+  height: 38px;
+  border: 1px solid var(--border);
+  background: #fff;
+  border-radius: 10px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+/* MAIN BOARD */
+.board { display: grid; gap: 12px; }
+
+/* HEADER */
+.headerCard {
+  border: 3px solid #111;
+  border-radius: 18px;
+  padding: 14px 16px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+  background: #e5e5e5;
+  max-width: 980px;
+}
+.field { display: flex; gap: 10px; align-items: baseline; }
+.label { font-weight: 800; font-size: 20px; }
+
+.lineInput {
+  flex: 1;
+  border: none;
+  border-bottom: 3px solid #111;
+  outline: none;
+  background: transparent;
+  font-size: 20px;
+  font-weight: 800;
+}
+.lineInput.short { max-width: 110px; }
+
+/* VERSE */
+.verseCard {
+  border: 3px solid #111;
+  border-radius: 18px;
+  padding: 12px 14px;
+  background: #fff;
+  max-width: 980px;
+  display: flex;
+  gap: 12px;
+}
+.verseInput {
+  border: none;
+  outline: none;
+  font-size: 18px;
+  font-weight: 700;
+  width: 100%;
+}
+.startVerseInput{
+  width: 80px;
+  border: none;
+  border-bottom: 2px solid #111;
+  outline: none;
+  font-size: 18px;
+  font-weight: 800;
+  background: transparent;
+  text-align: left;
+}
+
+/* TOOLBAR */
+.toolbar {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.toolbar button,
+.toolbar input {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 8px 10px;
+}
+.toolbar input { width: 360px; }
+
+/* GRID */
+.grid {
+  display: grid;
+  grid-template-columns: repeat(var(--cols), var(--cell));
+  gap: var(--gap);
+  max-width: 980px;
+}
+.cell {
+  width: var(--cell);
+  height: var(--cell);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  display: grid;
+  place-items: center;
+  font-weight: 700;
+  cursor: pointer;
+}
+.cell.selected { outline: 3px solid #111; }
+.cell.filled { background: #f7f7f7; }
+
+/* READOUT */
+.readoutCard {
+  border: 3px solid #111;
+  border-radius: 18px;
+  padding: 12px;
+  max-width: 980px;
+}
+.readoutRow {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+.readoutChip {
+  width: 34px;
+  height: 34px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  display: grid;
+  place-items: center;
+  font-weight: 700;
+}
+.readoutChip.empty { color: #bbb; }
+
+/* Row label (V1, V2, etc.) */
+.rowLabel {
+  width: 48px;
+  font-weight: 800;
+  color: #666;
+}
+
+/* Active row label (current phrase/verse) */
+.rowLabel.active {
+  color: #111;
+  text-decoration: underline;
+}
+
+
+
+/* PRINT */
+@media print {
+  .letters, .toolbar { display: none; }
+  .wrap { grid-template-columns: 1fr; }
+}
+</style>
+</head>
+
+<body>
+<div class="wrap">
+
+<aside class="letters" id="letters"></aside>
+
+<main class="board">
+
+<div class="headerCard">
+  <div class="field">
+    <div class="label">Book:</div>
+    <input class="lineInput" id="bookInput" />
+  </div>
+  <div class="field">
+    <div class="label">Chapter:</div>
+    <input class="lineInput short" id="chapterInput" />
+  </div>
+</div>
+
+<div class="verseCard">
+  <div class="label">Verse:</div>
+  <input class="verseInput" id="verseHeading" placeholder="e.g., Psalm 102:27" />
+
+  <div class="label" style="font-size:16px;">Start #:</div>
+  <input class="startVerseInput" id="startVerse" placeholder="1" inputmode="numeric" />
+</div>
+
+<div class="toolbar">
+  <button id="clear">Clear</button>
+  <button id="printBtn">Print</button>
+  <button id="export">Export</button>
+  <input id="importText" placeholder="Paste export here" />
+  <button id="importBtn">Import</button>
+</div>
+
+<div class="grid" id="grid"></div>
+
+<div class="readoutCard">
+  <div id="readoutRows"></div>
+</div>
+
+</main>
+</div>
+
+<script>
+const COLS = 15;
+const ROWS = 12;
+const READOUT_ROWS = 8;
+
+let selectedIndex = 0;
+const total = COLS * ROWS;
+const cells = Array(total).fill("");
+
+const gridEl = document.getElementById("grid");
+const lettersEl = document.getElementById("letters");
+const readoutRowsEl = document.getElementById("readoutRows");
+const startVerseEl = document.getElementById("startVerse");
+
+gridEl.style.setProperty("--cols", COLS);
+
+/* LETTER BUTTONS */
+"ABCDEFGHIJKLMNOPQRSTUVWXYZ".split("").forEach(ch => {
+  const b = document.createElement("button");
+  b.textContent = ch;
+  b.onclick = () => placeChar(ch);
+  lettersEl.appendChild(b);
+});
+["␠",".",",",":",";","—","’"].forEach(sym => {
+  const b = document.createElement("button");
+  b.textContent = sym;
+  b.onclick = () => placeChar(sym==="␠"?" ":sym);
+  lettersEl.appendChild(b);
+});
+
+/* RENDER */
+function render() {
+  gridEl.innerHTML = "";
+  for (let i=0;i<total;i++) {
+    const c = document.createElement("div");
+    c.className = "cell" + (i===selectedIndex?" selected":"") + (cells[i]?" filled":"");
+    c.textContent = cells[i];
+    c.onclick = () => { selectedIndex=i; render(); };
+    gridEl.appendChild(c);
+  }
+  renderReadout();
+}
+
+function renderReadout() {
+  readoutRowsEl.innerHTML = "";
+
+  const startRow = Math.floor(selectedIndex / COLS);
+ const currentRow = Math.floor(selectedIndex / COLS);
+
+  for (let r = 0; r < READOUT_ROWS; r++) {
+    const row = startRow + r;
+    if (row >= ROWS) break;
+
+    const wrap = document.createElement("div");
+    wrap.className = "readoutRow";
+
+    // ✅ Add V1 / V2 / V3... label
+    const label = document.createElement("div");
+    label.className = "rowLabel" + (row === currentRow ? " active" : "");
+    const startVerseNum = parseInt(startVerseEl.value, 10);
+    const base = Number.isFinite(startVerseNum) ? startVerseNum : 1;
+    label.textContent = `V${base + row}`;
+
+    wrap.appendChild(label);
+
+    // Chips
+    for (let i = row * COLS; i < (row + 1) * COLS; i++) {
+      const chip = document.createElement("div");
+      chip.className = "readoutChip" + (cells[i] ? "" : " empty");
+      chip.textContent = cells[i] || "•";
+      wrap.appendChild(chip);
+    }
+
+    readoutRowsEl.appendChild(wrap);
+  }
+}
+
+
+/* ACTIONS */
+function placeChar(ch){
+  cells[selectedIndex]=ch;
+  if (selectedIndex<total-1) selectedIndex++;
+  render();
+}
+function backspaceLikeTyping(){
+  if (cells[selectedIndex]) cells[selectedIndex]="";
+  else if (selectedIndex>0){ selectedIndex--; cells[selectedIndex]=""; }
+  render();
+}
+function moveToNextRow(){
+  const r=Math.floor(selectedIndex/COLS);
+  selectedIndex=Math.min((r+1)*COLS,total-1);
+}
+
+/* KEYBOARD */
+window.addEventListener("keydown",e=>{
+  if (["INPUT","TEXTAREA"].includes(e.target.tagName)) return;
+  const k=e.key;
+
+  if (k==="Backspace"){ backspaceLikeTyping(); e.preventDefault(); }
+  else if (k==="Delete"){ cells[selectedIndex]=""; render(); e.preventDefault(); }
+  else if (k==="ArrowRight"){ selectedIndex=Math.min(total-1, selectedIndex+1); render(); e.preventDefault(); }
+else if (k==="ArrowLeft"){ selectedIndex=Math.max(0, selectedIndex-1); render(); e.preventDefault(); }
+else if (k==="ArrowDown"){ selectedIndex=Math.min(total-1, selectedIndex+COLS); render(); e.preventDefault(); }
+else if (k==="ArrowUp"){ selectedIndex=Math.max(0, selectedIndex-COLS); render(); e.preventDefault(); }
+  else if (k===" "){ placeChar(" "); e.preventDefault(); }
+  else if (/^[a-zA-Z]$/.test(k)){ placeChar(k.toUpperCase()); e.preventDefault(); }
+  else if ([".",",",":",";","-","—","'","’"].includes(k)){
+    const ch=k==="'"?"’":k;
+    placeChar(ch);
+    if (ch===".") moveToNextRow();
+    render();
+    e.preventDefault();
+  }
+});
+
+/* TOOLBAR */
+document.getElementById("printBtn").onclick=()=>window.print();
+document.getElementById("clear").onclick = () => {
+  cells.fill("");
+  selectedIndex = 0;
+  document.getElementById("bookInput").value = "";
+  document.getElementById("chapterInput").value = "";
+  document.getElementById("verseHeading").value = "";
+  startVerseEl.value = "";
+  render();
+};
+
+document.getElementById("export").onclick = () => {
+  document.getElementById("importText").value =
+    JSON.stringify({
+      cells,
+      selectedIndex,
+      book: document.getElementById("bookInput").value || "",
+      chapter: document.getElementById("chapterInput").value || "",
+      verseHeading: document.getElementById("verseHeading").value || "",
+      startVerse: startVerseEl.value || ""
+    });
+};
+document.getElementById("importBtn").onclick = () => {
+  const d = JSON.parse(document.getElementById("importText").value);
+
+  (d.cells || []).forEach((v,i)=>cells[i]=v||"");
+  selectedIndex = Math.max(0, Math.min(total - 1, d.selectedIndex || 0));
+
+  document.getElementById("bookInput").value = d.book ?? "";
+  document.getElementById("chapterInput").value = d.chapter ?? "";
+  document.getElementById("verseHeading").value = d.verseHeading ?? "";
+  startVerseEl.value = d.startVerse ?? "";
+
+  render();
+};
+
+render();
+</script>
+</body>
+</html>
